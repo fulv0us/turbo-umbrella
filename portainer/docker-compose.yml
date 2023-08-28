@@ -18,7 +18,7 @@ x-environment: &default-tz-puid-pgid
   TZ: $TZ
   PUID: $PUID
   PGID: $PGID
- 
+
 x-common-keys-core: &common-keys-core
   networks:
     - traefik
@@ -26,10 +26,11 @@ x-common-keys-core: &common-keys-core
   security_opt:
     - no-new-privileges:true
   restart: always
- 
+
 volumes:
   mongodb_data:
   portainer_data:
+
 
 services:
   traefik:

@@ -1,9 +1,10 @@
 version: "3.9"
 
 volumes:
-    prometheus_data:
-    grafana_data:
-    loki_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
 
 networks:
   monitoring:
@@ -44,8 +45,8 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-    command: 
-      - '--path.procfs=/host/proc' 
+    command:
+      - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
       - --collector.filesystem.ignored-mount-points
       - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
@@ -96,13 +97,15 @@ services:
 
   promtail:
     container_name: promtail
-    image:  grafana/promtail:latest
+    image: grafana/promtail:latest
     volumes:
       - ./promtail/promtail.yaml:/etc/promtail/docker-config.yaml
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - /var/log/auth.log:/mnt/auth.log
-      - ../portainer/logs:/mnt/logs/
+      - /var/log/auth.log:/mnt/logs/auth.log
+      - ../portainer/logs/access.log:/mnt/logs/access.log
+      - ../portainer/logs/pritunl.log:/mnt/logs/pritunl.log
+      - ../portainer/logs/traefik.log:/mnt/logs/traefik.log
     command: -config.file=/etc/promtail/docker-config.yaml
     depends_on:
       - loki
