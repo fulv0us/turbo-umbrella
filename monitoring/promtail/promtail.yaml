@@ -55,4 +55,4 @@ scrape_configs:
         - localhost
       labels:
         job: secure
-        __path__: /mnt/auth.log
+        __path__: /mnt/logs/auth.log
