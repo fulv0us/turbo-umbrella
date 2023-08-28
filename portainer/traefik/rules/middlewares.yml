@@ -1,0 +1,47 @@
+http:
+  middlewares:
+    middlewares-basic-auth:
+      basicAuth:
+        usersFile: "/.htpasswd"
+        realm: "Traefik 2 Basic Auth"
+    middlewares-rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+    middlewares-https-redirectscheme:
+      redirectScheme:
+        scheme: https
+        permanent: true    
+    middlewares-secure-headers:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - OPTIONS
+          - PUT
+        accessControlMaxAge: 100
+        hostsProxyHeaders:
+          - "X-Forwarded-Host"
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        customFrameOptionsValue: "allow-from https:{{env "DOMAIN"}}"
+        contentTypeNosniff: true
+        browserXssFilter: true
+        # sslForceHost: true # add sslHost to all of the services
+        # sslHost: "{{env "DOMAINNAME_CLOUD_SERVER"}}"
+        referrerPolicy: "same-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()"
+        customResponseHeaders:
+          X-Robots-Tag: "none,noarchive,nosnippet,notranslate,noimageindex,"
+          server: ""
+          # https://community.traefik.io/t/how-to-make-websockets-work-with-traefik-2-0-setting-up-rancher/1732
+          # X-Forwarded-Proto: "https"
+    middlewares-compress:
+      compress: {}
+    middlewares-ipwhitelist:
+      ipWhiteList:
+        sourceRange:
+          - "{{env "IP_WHITE_LIST"}}"
+        ipStrategy:
+          depth: 1

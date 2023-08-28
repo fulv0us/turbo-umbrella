@@ -1,0 +1,58 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: flog_scrape
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["logging=promtail"]
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'logstream'
+      - source_labels: ['__meta_docker_container_label_logging_jobname']
+        target_label: 'job'
+
+  - job_name: traefik_access
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: "traefik_access"
+        __path__: /mnt/logs/access.log
+
+  - job_name: traefik_system
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: traefik_system
+        __path__: /mnt/logs/traefik.log
+
+  - job_name: pritunl_server
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: pritunl_server
+        __path__: /mnt/logs/pritunl.log
+
+  - job_name: secure_logs
+    static_configs:
+    - targets:
+        - localhost
+      labels:
+        job: secure
+        __path__: /mnt/auth.log

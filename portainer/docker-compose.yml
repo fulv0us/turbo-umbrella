@@ -1,0 +1,161 @@
+version: "3.9"
+
+networks:
+  default:
+    driver: bridge
+  traefik:
+    name: traefik
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/24
+  mongo:
+    name: mongo
+  monitoring:
+    name: monitoring
+
+x-environment: &default-tz-puid-pgid
+  TZ: $TZ
+  PUID: $PUID
+  PGID: $PGID
+ 
+x-common-keys-core: &common-keys-core
+  networks:
+    - traefik
+    - monitoring
+  security_opt:
+    - no-new-privileges:true
+  restart: always
+ 
+volumes:
+  mongodb_data:
+  portainer_data:
+
+services:
+  traefik:
+    <<: *common-keys-core
+    container_name: traefik
+    image: traefik:2.10.4
+    command:
+      - --global.checkNewVersion=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.forwardedHeaders.trustedIPs=$CLOUDFLARE_IPS,$LOCAL_IPS
+      - --api=true
+      # - --api.insecure=true
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --entrypoints.websecure.http.tls.certresolver=leresolver
+      - --entrypoints.websecure.http.tls.domains[0].main=$DOMAIN
+      - --entrypoints.websecure.http.tls.domains[0].sans=*.$DOMAIN
+      - --providers.docker.network=traefik
+      - --providers.docker.swarmMode=false
+      - --providers.file.directory=/rules
+      - --providers.file.watch=true
+      - --metrics.prometheus=true
+      - --metrics.prometheus.buckets=0.1,0.3,1.2,5.0
+      - --log=true
+      - --log.level=INFO
+      - --log.filePath=/logs/traefik.log
+      - --accessLog=true
+      - --accessLog.filePath=/logs/access.log
+      - --accessLog.format=json
+      - --accessLog.bufferingSize=100
+      - --accessLog.filters.statusCodes=204-299,400-499,500-599
+      - --certificatesresolvers.leresolver.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.leresolver.acme.storage=./acme.json
+      - --certificatesresolvers.leresolver.acme.dnschallenge=true
+      - --certificatesresolvers.leresolver.acme.dnschallenge.provider=cloudflare
+      - --certificatesResolvers.leresolver.acme.dnsChallenge.resolvers=1.1.1.1:53,1.0.0.1:53
+      - --certificatesResolvers.leresolver.acme.dnsChallenge.delayBeforeCheck=90
+      #- --certificatesresolvers.leresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    environment:
+      TZ: ${TZ}
+      CF_API_KEY: ${CF_API_KEY}
+      CF_API_EMAIL: ${CF_API_EMAIL}
+      IP_WHITE_LIST: ${IP_WHITE_LIST}
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik/acme.json:/acme.json"
+      - "./traefik/rules:/rules"
+      - "./logs:/logs"
+      - "./traefik/.htpasswd:/.htpasswd"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.http-catchall.entrypoints=web
+      - traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)
+      - traefik.http.routers.http-catchall.middlewares=redirect-to-https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+      - traefik.http.routers.traefik-rtr.entrypoints=websecure
+      - traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAIN`)
+      - traefik.http.routers.traefik-rtr.tls=true
+      - traefik.http.routers.traefik-rtr.tls.certresolver=leresolver
+      - traefik.http.routers.traefik-rtr.tls.domains[0].main=$DOMAIN
+      - traefik.http.routers.traefik-rtr.tls.domains[0].sans=*.$DOMAIN
+      - traefik.http.routers.traefik-rtr.service=api@internal
+      - traefik.http.routers.traefik-rtr.middlewares=chain-basic-auth@file
+      - logging=promtail
+      - logging_jobname=traefik_system
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portainer.rule=Host(`${SUB_PORTAINER}.${DOMAIN}`)
+      - traefik.http.routers.portainer.entrypoints=websecure
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
+      - traefik.http.routers.portainer.middlewares=chain-secure@file
+      - traefik.http.routers.portainer.service=portainer
+    networks:
+      - traefik
+    security_opt:
+      - no-new-privileges:true
+
+  pritunl:
+    container_name: pritunl_vpn
+    restart: always
+    build:
+      context: .
+    privileged: true
+    volumes:
+      - ./logs/pritunl.log:/var/log/pritunl.log
+    ports:
+      - 16285:16285/udp
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.pritunl.rule=Host(`${SUB_PRITUNL}.${DOMAIN}`)
+      - traefik.http.routers.pritunl.entrypoints=websecure
+      - traefik.http.services.pritunl.loadbalancer.server.port=80
+      - traefik.http.routers.pritunl.middlewares=chain-secure@file
+      - traefik.http.routers.pritunl.service=pritunl
+    depends_on:
+      - mongo
+    networks:
+      - traefik
+      - mongo
+
+  mongo:
+    image: mongo:7.0.0
+    container_name: pritunl_mongo
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    depends_on:
+      - traefik
+    networks:
+      - mongo
